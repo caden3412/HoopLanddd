@@ -121,9 +121,10 @@ function scale(n: number): number {
   return Math.min(10, Math.max(1, Math.round(n)));
 }
 
-function fill<T extends object>(obj: T): T {
+function fill<T extends Record<string, number>>(obj: T): T {
   return Object.entries(obj).reduce((acc, [k, v]) => {
     acc[k as keyof T] = typeof v === 'number' ? v : 5;
     return acc;
   }, {} as T);
 }
+

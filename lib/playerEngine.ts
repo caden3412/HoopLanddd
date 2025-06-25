@@ -127,11 +127,11 @@ function scale(n: number): number {
   return Math.min(10, Math.max(1, Math.round(n)));
 }
 
-function fill<T extends Record<string, number>>(obj: T): T {
+function fill(obj: Record<string, number>): Record<string, number> {
   return Object.entries(obj).reduce((acc, [k, v]) => {
-    acc[k as keyof T] = typeof v === 'number' ? v : 5;
+    acc[k] = v;
     return acc;
-  }, {} as T);
+  }, {} as Record<string, number>);
 }
 
 

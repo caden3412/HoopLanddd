@@ -96,4 +96,50 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
     dribbling: scale(6 + Math.log10(g)),
     passing: scale(ast * 2),
     offReb: scale(total(orb) / 10),
-    defReb: scale(total(drb) / 10),
+        defReb: scale(total(drb) / 10),
+    stealing: scale(total(stl) / 10),
+    blocking: scale(total(blk) / 10),
+  };
+
+  const tendencies = {
+    floaters: 1,
+    postups: 1,
+    threePointers: fg3a > 3 ? 3 : 1,
+    spinmoves: 1,
+    pumpfakes: 1,
+    stepbacks: 1,
+  };
+
+  const physical = {
+    speed: scale(4 + mp / 10),
+    strength: 6,
+    stamina: scale(4 + mp / 5),
+  };
+
+  return {
+    name,
+    slug,
+    team: 'Auto-scouted NCAA',
+    year: 'Jr',
+    jersey: '#1',
+    height: '6-6',
+    weight: '205 lbs',
+    attributes,
+    physical,
+    tendencies,
+    analysis: "Productive upperclassman with efficient inside scoring and solid defensive instincts.",
+  };
+}
+
+function scale(n: number): number {
+  if (isNaN(n)) return 5;
+  return Math.min(10, Math.max(1, Math.round(n)));
+}
+
+function fill<T extends Record<string, number>>(obj: T): T {
+  return Object.entries(obj).reduce((acc, [k, v]) => {
+    acc[k as keyof T] = typeof v === 'number' ? v : 5;
+    return acc;
+  }, {} as T);
+}
+

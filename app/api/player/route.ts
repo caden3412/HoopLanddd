@@ -1,19 +1,16 @@
-export async function scoutPlayer(name: string): Promise<PlayerProfile> {
-  const baseSlug = name.trim().toLowerCase().replace(/\s+/g, '-');
-  const variants = [`${baseSlug}.html`, `${baseSlug}-1.html`, `${baseSlug}-2.html`];
-  let html = '';
-  let slug = '';
-  let found = false;
+import { scoutPlayer } from '@/lib/playerEngine';
 
-  for (const v of variants) {
-    const url = `https://www.sports-reference.com/cbb/players/${v}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      html = await res.text();
-      slug = v.replace('.html', '');
-      found = true;
-      break;
-    }
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const name = searchParams.get('name') || '';
+
+  if (!name) {
+    return new Response(JSON.stringify({ error: 'Missing name' }), { status: 400 });
+  }
+
+  const player = await scoutPlayer(name);
+  return new Response(JSON.stringify(player), { status: 200 });
+}
   }
 
   if (!found) {

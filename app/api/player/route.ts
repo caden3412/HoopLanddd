@@ -96,4 +96,4 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
     dribbling: scale(6 + Math.log10(g)),
     passing: scale(ast * 2),
     offReb: scale(total(orb) / 10),
-    defReb: scale(total(drb)
+    defReb: scale(total(drb) / 10),

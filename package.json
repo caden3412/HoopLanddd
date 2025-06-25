@@ -7,7 +7,9 @@
     "start": "next start"
   },
   "dependencies": {
+    "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12",
+    "node-nlp": "^4.26.1",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",

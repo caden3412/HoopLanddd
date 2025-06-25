@@ -2,18 +2,13 @@ import { NextRequest } from 'next/server';
 import { scoutPlayer } from '@/lib/playerEngine';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const name = searchParams.get('name');
-
-  if (!name) {
-    return new Response(JSON.stringify({ error: 'Missing name' }), { status: 400 });
-  }
-
+  const name = new URL(req.url).searchParams.get('name');
+  if (!name) return new Response(JSON.stringify({ error: 'Missing name' }), { status: 400 });
   try {
     const player = await scoutPlayer(name);
     return new Response(JSON.stringify(player), { status: 200 });
-  } catch (err: any) {
-    console.error('Error in /api/player:', err.stack || err.message || err);
-    return new Response(JSON.stringify({ error: 'Internal error occurred' }), { status: 500 });
+  } catch (e: any) {
+    console.error('❌ scoutPlayer error:', e.message);
+    return new Response(JSON.stringify({ error: e.message }), { status: 502 });
   }
 }

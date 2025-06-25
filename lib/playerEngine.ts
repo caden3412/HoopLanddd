@@ -1,137 +1,218 @@
+import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { NlpManager } from 'node-nlp'; // alternative to 'natural' if you want advanced NLP (optional)
 
-type PlayerProfile = {
-  name: string;
-  slug: string;
-  team?: string;
-  year?: string;
-  jersey?: string;
-  height?: string;
-  weight?: string;
-  attributes: Record<string, number>;
-  physical: Record<string, number>;
-  tendencies: Record<string, number>;
-  analysis: string;
-  interest?: { school: string; percent: number }[];
+// Simplified tendencies keywords for NLP extraction:
+const tendenciesKeywords = {
+  postups: ['post up', 'post-up', 'postups', 'backs down'],
+  floaters: ['floater', 'floats', 'floaters'],
+  threePointers: ['three point', '3pt', 'three-pointer', 'shoots threes'],
+  spinmoves: ['spin move', 'spin moves', 'spinmove'],
+  pumpfakes: ['pump fake', 'pump-fake', 'pump fakes'],
+  stepbacks: ['stepback', 'step-back', 'stepbacks'],
+  defense: ['defense', 'defensive', 'steal', 'block', 'blocks', 'disrupt'],
 };
 
-export async function scoutPlayer(name: string): Promise<PlayerProfile> {
+// Basic helper for tendency extraction
+function extractTendencies(text: string): Record<string, number> {
+  const tendencies: Record<string, number> = {};
+  const lowerText = text.toLowerCase();
+
+  for (const [tendency, keywords] of Object.entries(tendenciesKeywords)) {
+    tendencies[tendency] = keywords.reduce((score, kw) => 
+      score + (lowerText.includes(kw) ? 1 : 0), 0);
+  }
+
+  return tendencies;
+}
+
+// Scrape Sports Reference college stats for player
+export async function scrapeSportsRefStats(name: string) {
   const baseSlug = name.trim().toLowerCase().replace(/\s+/g, '-');
   const variants = [`${baseSlug}.html`, `${baseSlug}-1.html`, `${baseSlug}-2.html`];
+
   let html = '';
-  let slug = '';
   let found = false;
 
   for (const v of variants) {
     const url = `https://www.sports-reference.com/cbb/players/${v}`;
-    const res = await fetch(url);
-    if (res.ok) {
-      html = await res.text();
-      slug = v.replace('.html', '');
-      found = true;
-      break;
-    }
+    try {
+      const res = await axios.get(url);
+      if (res.status === 200) {
+        html = res.data;
+        found = true;
+        break;
+      }
+    } catch {}
   }
 
   if (!found) {
-    return {
-      name,
-      slug: baseSlug,
-      team: 'TBD',
-      year: 'Fr',
-      attributes: fill({
-        layup: 5, dunking: 5, inside: 5, midrange: 5, three: 5, freeThrow: 5,
-        dribbling: 5, passing: 5, offReb: 5, defReb: 5, stealing: 5, blocking: 5
-      }),
-      physical: fill({ speed: 6, strength: 6, stamina: 6 }),
-      tendencies: fill({
-        floaters: 0, postups: 0, threePointers: 0, spinmoves: 0, pumpfakes: 0, stepbacks: 0
-      }),
-      analysis: "Freshman or international player. Full scouting will be available once data is reported.",
-      interest: [
-        { school: 'Duke', percent: 30 },
-        { school: 'Kentucky', percent: 25 },
-        { school: 'UConn', percent: 15 },
-      ],
-    };
+    return null;
   }
 
   const $ = cheerio.load(html);
-  const comments = $('body').contents().filter((_, el) => el.type === 'comment').map((_, el) => el.data).get().join('');
+  // The stats table might be inside an HTML comment, so extract that:
+  const comments = $('body').contents()
+    .filter((_, el) => el.type === 'comment')
+    .map((_, el) => el.data)
+    .get().join('');
   const $$ = cheerio.load(comments);
+
   const row = $$('table#players_per_game tbody tr.full_table').last();
 
-  const g = parseFloat(row.find('td[data-stat="g"]').text()) || 1;
-  const fg = parseFloat(row.find('td[data-stat="fg"]').text()) || 0;
-  const fga = parseFloat(row.find('td[data-stat="fga"]').text()) || 1;
-  const fg3 = parseFloat(row.find('td[data-stat="fg3"]').text()) || 0;
-  const fg3a = parseFloat(row.find('td[data-stat="fg3a"]').text()) || 1;
-  const ft = parseFloat(row.find('td[data-stat="ft"]').text()) || 0;
-  const fta = parseFloat(row.find('td[data-stat="fta"]').text()) || 1;
-  const orb = parseFloat(row.find('td[data-stat="orb"]').text()) || 0;
-  const drb = parseFloat(row.find('td[data-stat="drb"]').text()) || 0;
-  const ast = parseFloat(row.find('td[data-stat="ast"]').text()) || 0;
-  const stl = parseFloat(row.find('td[data-stat="stl"]').text()) || 0;
-  const blk = parseFloat(row.find('td[data-stat="blk"]').text()) || 0;
-  const mp = parseFloat(row.find('td[data-stat="mp"]').text()) || 20;
+  if (!row.length) return null;
 
-  const total = (val: number) => Math.round(val * g);
+  const parseFloatSafe = (selector: string) =>
+    parseFloat(row.find(`td[data-stat="${selector}"]`).text()) || 0;
+
+  const g = parseFloatSafe('g') || 1;
+  const fg = parseFloatSafe('fg');
+  const fga = parseFloatSafe('fga') || 1;
+  const fg3 = parseFloatSafe('fg3');
+  const fg3a = parseFloatSafe('fg3a') || 1;
+  const ft = parseFloatSafe('ft');
+  const fta = parseFloatSafe('fta') || 1;
+  const orb = parseFloatSafe('orb');
+  const drb = parseFloatSafe('drb');
+  const ast = parseFloatSafe('ast');
+  const stl = parseFloatSafe('stl');
+  const blk = parseFloatSafe('blk');
+  const mp = parseFloatSafe('mp') || 20;
+
+  return { g, fg, fga, fg3, fg3a, ft, fta, orb, drb, ast, stl, blk, mp };
+}
+
+// Scrape 247Sports recruiting profile snippet
+export async function scrape247Sports(name: string) {
+  const searchUrl = `https://247sports.com/Search/?q=${encodeURIComponent(name)}`;
+  try {
+    const searchRes = await axios.get(searchUrl);
+    const $search = cheerio.load(searchRes.data);
+    // Find first recruiting profile link in search results:
+    const firstProfileLink = $search('a[data-sport="basketball"]').attr('href');
+    if (!firstProfileLink) return null;
+
+    // Fetch recruiting profile
+    const profileUrl = `https://247sports.com${firstProfileLink}`;
+    const profileRes = await axios.get(profileUrl);
+    const $profile = cheerio.load(profileRes.data);
+
+    // Extract star rating (e.g., 4-star, 5-star)
+    const starText = $profile('.rating').first().text() || '';
+    const starMatch = starText.match(/(\d)-star/);
+    const stars = starMatch ? parseInt(starMatch[1], 10) : 0;
+
+    // Extract summary text for tendencies
+    const summary = $profile('.player-summary').text() || '';
+
+    return { stars, summary };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Basic news scraping example from a free source (e.g., ESPN player news)
+// NOTE: This is just an example, you can replace with any news API or site
+export async function scrapePlayerNews(name: string) {
+  const query = encodeURIComponent(name);
+  const url = `https://www.espn.com/mens-college-basketball/player/_/id/`; // You'll need player ID; so alternatively scrape ESPN search results page
+
+  // For demo, let's scrape ESPN search results page:
+  const searchUrl = `https://www.espn.com/search/results?q=${query}&type=article`;
+  try {
+    const res = await axios.get(searchUrl);
+    const $ = cheerio.load(res.data);
+
+    const articles = [];
+    $('section.search-results article').each((_, el) => {
+      const title = $(el).find('h1, h2, h3').text();
+      const snippet = $(el).find('p').text();
+      if (title && snippet) {
+        articles.push(`${title} ${snippet}`);
+      }
+    });
+
+    return articles.join(' ');
+  } catch {
+    return '';
+  }
+}
+
+// Aggregate all sources into a player scouting profile
+export async function scoutPlayer(name: string) {
+  // 1. Get stats
+  const stats = await scrapeSportsRefStats(name);
+
+  // 2. Get recruiting data
+  const recruit = await scrape247Sports(name);
+
+  // 3. Get news text
+  const newsText = await scrapePlayerNews(name);
+
+  // 4. Extract tendencies keywords from recruiting summary + news
+  const tendenciesFromRecruit = recruit?.summary ? extractTendencies(recruit.summary) : {};
+  const tendenciesFromNews = extractTendencies(newsText);
+
+  // Combine tendencies by summing
+  const combinedTendencies: Record<string, number> = {};
+  for (const key of Object.keys(tendenciesKeywords)) {
+    combinedTendencies[key] = (tendenciesFromRecruit[key] || 0) + (tendenciesFromNews[key] || 0);
+  }
+
+  // Normalize tendencies to max 5 scale
+  for (const key of Object.keys(combinedTendencies)) {
+    combinedTendencies[key] = Math.min(5, combinedTendencies[key]);
+  }
+
+  // 5. Build attribute object based on stats and stars (simple heuristic)
+  // Default fallback attributes:
+  const defaultAttributes = {
+    layup: 5, dunking: 5, inside: 5, midrange: 5, three: 5, freeThrow: 5,
+    dribbling: 5, passing: 5, offReb: 5, defReb: 5, stealing: 5, blocking: 5,
+  };
+
+  // If no stats, return default profile with recruiting stars info:
+  if (!stats) {
+    return {
+      name,
+      attributes: defaultAttributes,
+      tendencies: combinedTendencies,
+      analysis: recruit?.summary || "No scouting info available",
+      starRating: recruit?.stars || 0,
+    };
+  }
+
+  // Helper scale function
+  const scale = (val: number) => Math.min(10, Math.max(1, Math.round(val)));
+
+  // Calculate attributes from stats
+  const total = (val: number) => Math.round(val * stats.g);
 
   const attributes = {
-    layup: scale((fg / fga) * 10),
-    dunking: scale(fg / 2),
-    inside: scale(fg - fg3),
-    midrange: scale(((fg - fg3) / (fga - fg3a)) * 10),
-    three: fg3a >= 2 ? (fg3 / fg3a >= 0.4 ? 10 : fg3 / fg3a >= 0.35 ? 7 : 5) : 4,
-    freeThrow: Math.min(10, Math.round((ft / fta) * 10)),
-    dribbling: scale(6 + Math.log10(g)),
-    passing: scale(ast * 2),
-    offReb: scale(total(orb) / 10),
-    defReb: scale(total(drb) / 10),
-    stealing: scale(total(stl) / 10),
-    blocking: scale(total(blk) / 10),
+    layup: scale((stats.fg / stats.fga) * 10),
+    dunking: scale(stats.fg / 2),
+    inside: scale(stats.fg - stats.fg3),
+    midrange: scale(((stats.fg - stats.fg3) / (stats.fga - stats.fg3a)) * 10),
+    three: stats.fg3a >= 2
+      ? (stats.fg3 / stats.fg3a >= 0.4 ? 10 : stats.fg3 / stats.fg3a >= 0.35 ? 7 : 5)
+      : 4,
+    freeThrow: scale((stats.ft / stats.fta) * 10),
+    dribbling: scale(6 + Math.log10(stats.g)),
+    passing: scale(stats.ast * 2),
+    offReb: scale(total(stats.orb) / 10),
+    defReb: scale(total(stats.drb) / 10),
+    stealing: scale(total(stats.stl) / 10),
+    blocking: scale(total(stats.blk) / 10),
   };
 
-  const tendencies = {
-    floaters: 1,
-    postups: 1,
-    threePointers: fg3a > 3 ? 3 : 1,
-    spinmoves: 1,
-    pumpfakes: 1,
-    stepbacks: 1,
-  };
-
-  const physical = {
-    speed: scale(4 + mp / 10),
-    strength: 6,
-    stamina: scale(4 + mp / 5),
-  };
-
+  // Final profile object
   return {
     name,
-    slug,
-    team: 'Auto-scouted NCAA',
-    year: 'Jr',
-    jersey: '#1',
-    height: '6-6',
-    weight: '205 lbs',
+    starRating: recruit?.stars || 0,
     attributes,
-    physical,
-    tendencies,
-    analysis: "Productive upperclassman with efficient inside scoring and solid defensive instincts.",
+    tendencies: combinedTendencies,
+    analysis: recruit?.summary || 'Aggregated data scouting report.',
   };
-}
-
-function scale(n: number): number {
-  if (isNaN(n)) return 5;
-  return Math.min(10, Math.max(1, Math.round(n)));
-}
-
-function fill(obj: Record<string, number>): Record<string, number> {
-  return Object.entries(obj).reduce((acc, [k, v]) => {
-    acc[k] = v;
-    return acc;
-  }, {} as Record<string, number>);
 }
 
 

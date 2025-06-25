@@ -39,9 +39,14 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
       slug: baseSlug,
       team: 'TBD',
       year: 'Fr',
-      attributes: fill({ layup: 5, dunking: 5, inside: 5, midrange: 5, three: 5, freeThrow: 5, dribbling: 5, passing: 5, offReb: 5, defReb: 5, stealing: 5, blocking: 5 }),
+      attributes: fill({
+        layup: 5, dunking: 5, inside: 5, midrange: 5, three: 5, freeThrow: 5,
+        dribbling: 5, passing: 5, offReb: 5, defReb: 5, stealing: 5, blocking: 5
+      }),
       physical: fill({ speed: 6, strength: 6, stamina: 6 }),
-      tendencies: fill({ floaters: 0, postups: 0, threePointers: 0, spinmoves: 0 }),
+      tendencies: fill({
+        floaters: 0, postups: 0, threePointers: 0, spinmoves: 0, pumpfakes: 0, stepbacks: 0
+      }),
       analysis: "Freshman or international player. Full scouting will be available once data is reported.",
       interest: [
         { school: 'Duke', percent: 30 },
@@ -77,7 +82,7 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
     dunking: scale(fg / 2),
     inside: scale(fg - fg3),
     midrange: scale(((fg - fg3) / (fga - fg3a)) * 10),
-    three: fg3a >= 2 ? fg3 / fg3a >= 0.4 ? 10 : fg3 / fg3a >= 0.35 ? 7 : 5 : 4,
+    three: fg3a >= 2 ? (fg3 / fg3a >= 0.4 ? 10 : fg3 / fg3a >= 0.35 ? 7 : 5) : 4,
     freeThrow: Math.min(10, Math.round((ft / fta) * 10)),
     dribbling: scale(6 + Math.log10(g)),
     passing: scale(ast * 2),
@@ -128,6 +133,7 @@ function fill<T extends Record<string, number>>(obj: T): T {
     return acc;
   }, {} as T);
 }
+
 
 
 

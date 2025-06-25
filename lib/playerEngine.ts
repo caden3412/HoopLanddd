@@ -1,4 +1,3 @@
-// lib/playerEngine.ts
 import * as cheerio from 'cheerio';
 
 type PlayerProfile = {
@@ -35,7 +34,6 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
   }
 
   if (!found) {
-    // Fallback for freshmen or unknown players
     return {
       name,
       slug: baseSlug,
@@ -53,7 +51,6 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
     };
   }
 
-  // Extract stats table
   const $ = cheerio.load(html);
   const comments = $('body').contents().filter((_, el) => el.type === 'comment').map((_, el) => el.data).get().join('');
   const $$ = cheerio.load(comments);
@@ -91,8 +88,12 @@ export async function scoutPlayer(name: string): Promise<PlayerProfile> {
   };
 
   const tendencies = {
-    floaters: 1, postups: 1, threePointers: fg3a > 3 ? 3 : 1,
-    spinmoves: 1, pumpfakes: 1, stepbacks: 1,
+    floaters: 1,
+    postups: 1,
+    threePointers: fg3a > 3 ? 3 : 1,
+    spinmoves: 1,
+    pumpfakes: 1,
+    stepbacks: 1,
   };
 
   const physical = {
@@ -121,11 +122,12 @@ function scale(n: number): number {
   return Math.min(10, Math.max(1, Math.round(n)));
 }
 
-function fill(obj: Record<string, number>): Record<string, number> {
+function fill<T extends Record<string, number>>(obj: T): T {
   return Object.entries(obj).reduce((acc, [k, v]) => {
-    acc[k] = typeof v === 'number' ? v : 5;
+    acc[k as keyof T] = typeof v === 'number' ? v : 5;
     return acc;
-  }, {} as Record<string, number>);
+  }, {} as T);
 }
+
 
 

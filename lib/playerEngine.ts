@@ -4,28 +4,23 @@ import * as cheerio from 'cheerio';
 
 const axiosInstance = axios.create({
   timeout: 8000,
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (compatible; HoopLandBot/1.0)',
-  },
+  headers: { 'User-Agent': 'Mozilla/5.0 HoopLandBot' },
 });
 
-// 🏀 Keywords for tendencies
-const tendenciesKeywords: Record<string, string[]> = {
-  postups: ['post up', 'backs down'],
-  floaters: ['floater'],
-  threePointers: ['3pt', 'three‑point', 'shoots threes'],
-  spinmoves: ['spin move'],
-  pumpfakes: ['pump fake'],
-  stepbacks: ['stepback'],
-  defense: ['steal', 'block', 'defensive'],
-};
-
 function extractTendencies(text: string) {
+  const keywords: Record<string, string[]> = {
+    postups: ['post up', 'backs down'],
+    floaters: ['floater'],
+    threePointers: ['3pt', 'three‑point'],
+    spinmoves: ['spin move'],
+    pumpfakes: ['pump fake'],
+    stepbacks: ['stepback'],
+    defense: ['steal', 'block', 'defensive'],
+  };
   const t: Record<string, number> = {};
   const lower = text.toLowerCase();
-  for (const [k, arr] of Object.entries(tendenciesKeywords)) {
-    t[k] = arr.reduce((sum, kw) => sum + (lower.includes(kw) ? 1 : 0), 0);
-    t[k] = Math.min(5, t[k]);
+  for (const [k, arr] of Object.entries(keywords)) {
+    t[k] = Math.min(5, arr.reduce((sum, kw) => sum + (lower.includes(kw) ? 1 : 0), 0));
   }
   return t;
 }
@@ -37,11 +32,13 @@ async function scrapeSportsRef(name: string) {
     const url = `https://www.sports-reference.com/cbb/players/${v}`;
     try {
       const res = await axiosInstance.get(url);
-      const $ = cheerio.load(res.data);
+      const html = res.data;
+      const $ = cheerio.load(html);
       const comments = $('body').contents().filter((_, el) => el.type === 'comment')
         .map((_, el) => el.data).get().join('');
+      if (!comments) continue;
       const $$ = cheerio.load(comments);
-      const row = $$('table#players_per_game tbody tr.full_table').last();
+      const row = $$('table#players_per_game > tbody > tr.full_table').last();
       if (!row.length) continue;
       const get = (s: string) => parseFloat(row.find(`td[data-stat="${s}"]`).text()) || 0;
       return {
@@ -60,7 +57,7 @@ async function scrapeSportsRef(name: string) {
         mp: get('mp'),
       };
     } catch (e: any) {
-      console.warn('[SportsRef]', url, e.message);
+      console.warn('[SportsRef]', v, e.message);
     }
   }
   console.warn('[SportsRef] no data for', name);
@@ -68,16 +65,15 @@ async function scrapeSportsRef(name: string) {
 }
 
 async function scrape247(name: string) {
-  const url = `https://247sports.com/Search/?q=${encodeURIComponent(name)}`;
   try {
-    const res = await axiosInstance.get(url);
+    const res = await axiosInstance.get(`https://247sports.com/Search/?query=${encodeURIComponent(name)}`);
     const $ = cheerio.load(res.data);
-    const link = $('a[data-sport="basketball"]').attr('href');
+    const link = $('a.card a').first().attr('href') ?? $('a.player-name').attr('href');
     if (!link) throw new Error('no link');
-    const profile = await axiosInstance.get(`https://247sports.com${link}`);
-    const $$ = cheerio.load(profile.data);
-    const stars = parseInt($$('.rating').first().text()[0]) || 0;
-    const summary = $$('.player-summary').text().trim() || '';
+    const prof = await axiosInstance.get(`https://247sports.com${link}`);
+    const $$ = cheerio.load(prof.data);
+    const stars = parseInt($$('.star-ratings').attr('data-stars') || '') || 0;
+    const summary = $$('.player-summary__blurb').text().trim();
     return { stars, summary };
   } catch (e: any) {
     console.warn('[247Sports]', e.message);
@@ -91,7 +87,9 @@ async function scrapeESPN(name: string) {
     const $ = cheerio.load(res.data);
     let txt = '';
     $('section.search-results article').each((_, el) => {
-      txt += $(el).find('h1,h2,h3').text() + ' ' + $(el).find('p').text() + ' ';
+      const title = $(el).find('h2').text();
+      const snippet = $(el).find('p').text();
+      if (title || snippet) txt += `${title} ${snippet} `;
     });
     return txt.trim();
   } catch (e: any) {
@@ -104,12 +102,12 @@ async function scrapeRivals(name: string) {
   try {
     const res = await axiosInstance.get(`https://n.rivals.com/search?query=${encodeURIComponent(name)}`);
     const $ = cheerio.load(res.data);
-    const link = $('a.player-card__link').attr('href');
+    const link = $('a[data-track="player-profile"]').attr('href');
     if (!link) throw new Error('no link');
     const prof = await axiosInstance.get(`https://n.rivals.com${link}`);
     const $$ = cheerio.load(prof.data);
-    const stars = parseInt($$('.rating-stars').attr('data-stars') || '') || 0;
-    const summary = $$('.profile-bio__text').text().trim() || '';
+    const stars = parseInt($$('.stars___').first().text()) || 0;
+    const summary = $$('.profile__bio').text().trim();
     return { stars, summary };
   } catch (e: any) {
     console.warn('[Rivals]', e.message);
@@ -118,9 +116,9 @@ async function scrapeRivals(name: string) {
 }
 
 async function scrapeTwitter(name: string) {
+  const handle = name.trim().toLowerCase().replace(/\s+/g, '');
   try {
-    const user = name.trim().toLowerCase().replace(/\s+/g, '');
-    const res = await axiosInstance.get(`https://twitter.com/${user}`);
+    const res = await axiosInstance.get(`https://twitter.com/${handle}`);
     const $ = cheerio.load(res.data);
     return $('meta[name="description"]').attr('content') || '';
   } catch {
@@ -129,7 +127,7 @@ async function scrapeTwitter(name: string) {
 }
 
 export async function scoutPlayer(name: string) {
-  const [stats, rec24, news, rivals, twitter] = await Promise.all([
+  const [stats, r24, news, rivals, twitter] = await Promise.all([
     scrapeSportsRef(name),
     scrape247(name),
     scrapeESPN(name),
@@ -137,14 +135,13 @@ export async function scoutPlayer(name: string) {
     scrapeTwitter(name),
   ]);
 
-  const text = `${rec24?.summary || ''} ${news} ${rivals?.summary || ''} ${twitter}`;
+  const combinedText = `${r24?.summary || ''} ${news} ${rivals?.summary || ''} ${twitter}`;
 
-  if (!stats && !rec24 && !rivals) {
-    throw new Error(`🚨 No data sources returned for "${name}"`);
+  if (!stats && !r24 && !rivals) {
+    throw new Error(`No live scraping results for "${name}"`);
   }
 
-  const tendency = extractTendencies(text);
-
+  const tendencies = extractTendencies(combinedText);
   const scale = (x: number) => Math.min(10, Math.max(1, Math.round(x)));
 
   const attributes = stats
@@ -162,23 +159,22 @@ export async function scoutPlayer(name: string) {
         stealing: scale(stats.stl / (stats.g || 1) * 10),
         blocking: scale(stats.blk / (stats.g || 1) * 10),
       }
-    : {
-        layup: 5, dunking: 5, inside: 5, midrange: 5,
-        three: 5, freeThrow: 5, dribbling: 5,
-        passing: 5, offReb: 5, defReb: 5,
-        stealing: 5, blocking: 5,
-      };
+    : Array.from({ length: 12 }).reduce((acc, _, i) => {
+        const keys = ['layup','dunking','inside','midrange','three','freeThrow','dribbling','passing','offReb','defReb','stealing','blocking'];
+        acc[keys[i]] = 5;
+        return acc;
+      }, {} as Record<string, number>);
 
   return {
     name,
-    starRating: rec24?.stars || rivals?.stars || 0,
+    starRating: r24?.stars || rivals?.stars || 0,
     attributes,
-    tendencies: tendency,
-    analysis: rec24?.summary || rivals?.summary || news || 'Aggregated scouting incomplete.',
+    tendencies,
+    analysis: r24?.summary || rivals?.summary || news || 'No analysis found.',
     physical: {},
-    team: 'NA',
-    year: 'NA',
-    jersey: 'NA',
+    team: 'N/A',
+    year: 'N/A',
+    jersey: 'N/A',
     interest: [],
   };
 }

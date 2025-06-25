@@ -1,6 +1,7 @@
+import { NextRequest } from 'next/server';
 import { scoutPlayer } from '@/lib/playerEngine';
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const name = searchParams.get('name') || '';
 

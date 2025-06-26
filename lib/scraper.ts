@@ -1,35 +1,49 @@
-// lib/scraper.ts
+// FILE: lib/scrapers.ts
+
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
-const SOURCES = [
-  (name: string) => `https://www.on3.com/db/search/${encodeURIComponent(name)}/`,
-  (name: string) => `https://www.espn.com/search/results?q=${encodeURIComponent(name)}`,
-  (name: string) => `https://en.wikipedia.org/wiki/${encodeURIComponent(name.replace(/ /g, '_'))}`,
-  (name: string) => `https://247sports.com/SearchResults/?Query=${encodeURIComponent(name)}`,
-  (name: string) => `https://twitter.com/search?q=${encodeURIComponent(name)}&src=typed_query`,
-];
-
-export async function scrapePlayerBio(name: string): Promise<string> {
-  let combinedText = '';
-
-  for (const getUrl of SOURCES) {
+const sources = [
+  async (name: string) => {
     try {
-      const url = getUrl(name);
-      const res = await axios.get(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-        },
-      });
-
+      const res = await axios.get(`https://www.espn.com/search/results?q=${encodeURIComponent(name)}`);
       const $ = cheerio.load(res.data);
-      const pageText = $('body').text().replace(/\s+/g, ' ').trim();
-      combinedText += `\n---\n[${url}]\n` + pageText;
-    } catch (err) {
-      console.warn(`❌ Failed to scrape ${getUrl(name)}`);
+      const snippet = $('section article p').first().text();
+      return snippet || '';
+    } catch {
+      return '';
+    }
+  },
+  async (name: string) => {
+    try {
+      const res = await axios.get(`https://247sports.com/SearchResults/?SearchQuery=${encodeURIComponent(name)}`);
+      const $ = cheerio.load(res.data);
+      return $('meta[name="description"]').attr('content') || '';
+    } catch {
+      return '';
+    }
+  },
+  async (name: string) => {
+    try {
+      const res = await axios.get(`https://www.on3.com/search/?s=${encodeURIComponent(name)}`);
+      const $ = cheerio.load(res.data);
+      return $('meta[property="og:description"]').attr('content') || '';
+    } catch {
+      return '';
+    }
+  },
+  async (name: string) => {
+    try {
+      const res = await axios.get(`https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(name)}`);
+      const $ = cheerio.load(res.data);
+      return $('#mw-content-text p').first().text();
+    } catch {
+      return '';
     }
   }
+];
 
-  if (!combinedText) throw new Error('No live scraping results');
-  return combinedText;
+export async function scrapeAllSources(name: string): Promise<string> {
+  const chunks = await Promise.all(sources.map(fn => fn(name)));
+  return chunks.filter(Boolean).join('\n\n');
 }

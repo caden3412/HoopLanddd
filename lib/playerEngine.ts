@@ -1,27 +1,31 @@
-// lib/playerEngine.ts
-import { scrapePlayerBio } from './sources';
+// FILE: lib/playerEngine.ts
+
+import { getCleanedName } from './nameMatch';
+import { scrapeAllSources } from './scrapers';
 import { extractNLPProfile } from './nlp';
+import { getRecruitingInterest } from './recruiting';
+import { getTeamData } from './teams';
 
 export async function scoutPlayer(name: string) {
-  const rawText = await scrapePlayerBio(name);
+  const cleanedName = await getCleanedName(name);
+  const rawText = await scrapeAllSources(cleanedName);
   const result = await extractNLPProfile(rawText);
+  const interest = await getRecruitingInterest(cleanedName);
+  const teamInfo = result.team ? await getTeamData(result.team) : {};
 
   return {
-    name,
-    slug: name.toLowerCase().replace(/\s+/g, '-'),
+    name: cleanedName,
+    slug: cleanedName.toLowerCase().replace(/\s+/g, '-'),
     height: result.height || 'Unknown',
     weight: result.weight || 'Unknown',
     jersey: result.jersey || 'N/A',
-    team: result.team || 'N/A',
+    team: result.team || 'Uncommitted',
     year: result.year || 'N/A',
-    attributes: result.attributes || {
-      layup: 5, dunking: 5, inside: 5, midrange: 5,
-      three: 5, freeThrow: 5, dribbling: 5, passing: 5,
-      offReb: 5, defReb: 5, stealing: 5, blocking: 5
-    },
-    physical: result.physical || {},
-    tendencies: result.tendencies || {},
+    attributes: result.attributes,
+    physical: result.physical,
+    tendencies: result.tendencies,
     analysis: result.analysis || rawText.slice(0, 1000),
-    interest: result.interest || []
+    interest,
+    teamInfo
   };
 }

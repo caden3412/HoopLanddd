@@ -2,30 +2,34 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
-const sources = [
+const SOURCES = [
+  (name: string) => `https://www.on3.com/db/search/${encodeURIComponent(name)}/`,
   (name: string) => `https://www.espn.com/search/results?q=${encodeURIComponent(name)}`,
-  (name: string) => `https://247sports.com/search/?q=${encodeURIComponent(name)}`,
-  (name: string) => `https://www.on3.com/search/?s=${encodeURIComponent(name)}`,
-  (name: string) => `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(name)}`,
-  (name: string) => `https://twitter.com/search?q=${encodeURIComponent(name)}&src=typed_query&f=live`
+  (name: string) => `https://en.wikipedia.org/wiki/${encodeURIComponent(name.replace(/ /g, '_'))}`,
+  (name: string) => `https://247sports.com/SearchResults/?Query=${encodeURIComponent(name)}`,
+  (name: string) => `https://twitter.com/search?q=${encodeURIComponent(name)}&src=typed_query`,
 ];
 
 export async function scrapePlayerBio(name: string): Promise<string> {
-  const snippets: string[] = [];
+  let combinedText = '';
 
-  for (const getUrl of sources) {
-    const url = getUrl(name);
+  for (const getUrl of SOURCES) {
     try {
-      const { data } = await axios.get(url);
-      const $ = cheerio.load(data);
-      const text = $('body').text();
-      if (text.length > 100) snippets.push(text.slice(0, 3000));
+      const url = getUrl(name);
+      const res = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+        },
+      });
+
+      const $ = cheerio.load(res.data);
+      const pageText = $('body').text().replace(/\s+/g, ' ').trim();
+      combinedText += `\n---\n[${url}]\n` + pageText;
     } catch (err) {
-      console.warn(`Failed to fetch from ${url}`);
+      console.warn(`❌ Failed to scrape ${getUrl(name)}`);
     }
   }
 
-  if (snippets.length === 0) throw new Error('No live scraping results');
-
-  return snippets.join('\n---\n');
+  if (!combinedText) throw new Error('No live scraping results');
+  return combinedText;
 }

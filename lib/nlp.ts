@@ -1,114 +1,56 @@
 import { NlpManager } from 'node-nlp';
 
-const manager = new NlpManager({ languages: ['en'], forceNER: true });
-
 export async function extractNLPProfile(text: string) {
-  if (!text || text.length < 30) {
-    return {
-      attributes: defaultAttributes(),
-      physical: {},
-      tendencies: {},
-      analysis: 'No data available.',
-    };
-  }
-
-  const lowerText = text.toLowerCase();
-
-  const attributes = {
-    layup: scoreKeyword(lowerText, ['finishes', 'layup', 'crafty']),
-    dunking: scoreKeyword(lowerText, ['dunk', 'slam', 'vertical']),
-    inside: scoreKeyword(lowerText, ['paint', 'post', 'interior']),
-    midrange: scoreKeyword(lowerText, ['mid-range', 'pull-up', 'elbow jumper']),
-    three: scoreKeyword(lowerText, ['three-point', '3pt', 'outside shot']),
-    freeThrow: scoreKeyword(lowerText, ['free throw', 'ft line']),
-    dribbling: scoreKeyword(lowerText, ['handle', 'ball control', 'dribbling']),
-    passing: scoreKeyword(lowerText, ['pass', 'vision', 'playmaking']),
-    offReb: scoreKeyword(lowerText, ['offensive rebound', 'second chance']),
-    defReb: scoreKeyword(lowerText, ['defensive rebound', 'box out']),
-    stealing: scoreKeyword(lowerText, ['steal', 'interception']),
-    blocking: scoreKeyword(lowerText, ['block', 'rim protection']),
-  };
+  const manager = new NlpManager({ languages: ['en'], nlu: { useNoneFeature: false } });
+  
+  // This is where you'd train the model more, but for now we pattern match with RegEx
+  const heightMatch = text.match(/(?:height|ht)[^\d]{0,5}(\d{1,2}'\s?\d{1,2}")/i);
+  const weightMatch = text.match(/(?:weight|wt)[^\d]{0,5}(\d{2,3})\s?lbs?/i);
+  const jerseyMatch = text.match(/(?:jersey|number|#)\s*(\d{1,2})/i);
+  const yearMatch = text.match(/(freshman|sophomore|junior|senior)/i);
+  const teamMatch = text.match(/(?:for|at|plays for)\s([A-Z][a-zA-Z\s]+(?:University|College|State|Tech)?)/);
 
   const tendencies = {
-    postups: frequencyScore(lowerText, ['post up']),
-    floaters: frequencyScore(lowerText, ['floater']),
-    threePointers: frequencyScore(lowerText, ['three-point', '3pt']),
-    spinmoves: frequencyScore(lowerText, ['spin move']),
-    pumpfakes: frequencyScore(lowerText, ['pump fake']),
-    stepbacks: frequencyScore(lowerText, ['step back']),
-    defense: frequencyScore(lowerText, ['defense', 'defender']),
+    postups: (text.match(/post[-\s]?up/gi) || []).length,
+    floaters: (text.match(/floater/gi) || []).length,
+    threePointers: (text.match(/three[-\s]?pointer|3pt|3-pointer/gi) || []).length,
+    spinmoves: (text.match(/spin move/gi) || []).length,
+    pumpfakes: (text.match(/pump fake/gi) || []).length,
+    stepbacks: (text.match(/step[-\s]?back/gi) || []).length,
+    defense: (text.match(/defense|defensive|lockdown/gi) || []).length,
+  };
+
+  // Placeholder logic for attributes until enhanced
+  const attributes = {
+    layup: 5,
+    dunking: 5,
+    inside: 5,
+    midrange: 5,
+    three: 5,
+    freeThrow: 5,
+    dribbling: 5,
+    passing: 5,
+    offReb: 5,
+    defReb: 5,
+    stealing: 5,
+    blocking: 5
   };
 
   const physical = {
-    speed: scoreKeyword(lowerText, ['quick', 'speed', 'fast']),
-    strength: scoreKeyword(lowerText, ['strong', 'strength', 'muscular']),
-    stamina: scoreKeyword(lowerText, ['conditioning', 'endurance']),
+    speed: 5,
+    strength: 5,
+    stamina: 5
   };
 
-  const height = matchHeight(text);
-  const weight = matchWeight(text);
-  const jersey = matchJersey(text);
-  const team = matchTeam(text);
-  const year = matchYear(text);
-
   return {
+    height: heightMatch?.[1],
+    weight: weightMatch?.[1],
+    jersey: jerseyMatch?.[1],
+    year: yearMatch?.[1],
+    team: teamMatch?.[1],
     attributes,
-    tendencies,
     physical,
-    height,
-    weight,
-    jersey,
-    team,
-    year,
-    analysis: text,
-  };
-}
-
-function scoreKeyword(text: string, keywords: string[]) {
-  let score = 5;
-  for (const keyword of keywords) {
-    if (text.includes(keyword)) score += 1;
-  }
-  return Math.min(score, 10);
-}
-
-function frequencyScore(text: string, keywords: string[]) {
-  let count = 0;
-  for (const keyword of keywords) {
-    count += text.split(keyword).length - 1;
-  }
-  return Math.min(count, 5);
-}
-
-function matchHeight(text: string): string | null {
-  const match = text.match(/\b(6'?[0-9]|7'0?)\b/);
-  return match ? match[0].replace("'", "'") : null;
-}
-
-function matchWeight(text: string): string | null {
-  const match = text.match(/\b(1[5-9][0-9]|2[0-5][0-9])\s?(lbs|pounds)?\b/i);
-  return match ? match[0] : null;
-}
-
-function matchJersey(text: string): string | null {
-  const match = text.match(/#\d{1,2}/);
-  return match ? match[0].replace('#', '') : null;
-}
-
-function matchTeam(text: string): string | null {
-  const match = text.match(/\b(Alabama|Duke|Kansas|UCLA|USC|Michigan|Oregon|Kentucky|Texas|UNC)\b/i);
-  return match ? match[0] : null;
-}
-
-function matchYear(text: string): string | null {
-  const match = text.match(/\b(freshman|sophomore|junior|senior)\b/i);
-  return match ? match[0] : null;
-}
-
-function defaultAttributes() {
-  return {
-    layup: 5, dunking: 5, inside: 5, midrange: 5,
-    three: 5, freeThrow: 5, dribbling: 5, passing: 5,
-    offReb: 5, defReb: 5, stealing: 5, blocking: 5
+    tendencies,
+    analysis: text
   };
 }

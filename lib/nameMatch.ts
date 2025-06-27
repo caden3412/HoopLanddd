@@ -1,31 +1,20 @@
-// FILE: lib/nameMatch.ts
-
-import axios from 'axios';
 import Fuse from 'fuse.js';
 
-let nameCache: string[] = [];
+const playersList = [
+  // Populate with known player names from scraped sources or static list
+  'Bronny James',
+  'Ziaire Williams',
+  'Victor Wembanyama',
+  // add more as you expand...
+];
 
-async function fetchPlayerDatabase(): Promise<string[]> {
-  if (nameCache.length > 0) return nameCache;
+const fuse = new Fuse(playersList, {
+  includeScore: true,
+  threshold: 0.3,
+});
 
-  try {
-    const res = await axios.get(
-      'https://raw.githubusercontent.com/caden3412/HoopLanddd/main/data/players.json'
-    );
-    const names = res.data.map((p: any) => p.name);
-    nameCache = names;
-    return names;
-  } catch {
-    return [];
-  }
-}
-
-export async function getCleanedName(input: string): Promise<string> {
-  const names = await fetchPlayerDatabase();
-
-  if (!names.length) return input;
-
-  const fuse = new Fuse(names, { threshold: 0.3 });
-  const result = fuse.search(input);
-  return result.length > 0 ? result[0].item : input;
+export async function getCloseMatch(name: string): Promise<string> {
+  const result = fuse.search(name);
+  if (result.length > 0) return result[0].item;
+  return name; // fallback to original if no close match
 }
